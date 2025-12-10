@@ -107,6 +107,34 @@ class Card(BoxLayout):
         except Exception:
             pass
 
+class ColorAssigner:
+    """Asigna colores únicos a cada PID"""
+    def __init__(self):
+        self.colores = [
+            (0.2, 0.6, 0.86, 1),    # Azul
+            (0.18, 0.72, 0.48, 1),  # Verde
+            (0.95, 0.73, 0.25, 1),  # Naranja
+            (0.68, 0.53, 0.95, 1),  # Púrpura
+            (0.85, 0.30, 0.30, 1),  # Rojo
+            (0.30, 0.85, 0.85, 1),  # Cian
+            (0.85, 0.85, 0.30, 1),  # Amarillo
+            (0.60, 0.40, 0.85, 1),  # Lavanda
+            (0.85, 0.60, 0.40, 1),  # Coral
+            (0.40, 0.85, 0.60, 1),  # Verde menta
+        ]
+        self.mapa_colores = {}
+        self.contador = 0
+    
+    def obtener_color(self, pid):
+        if pid not in self.mapa_colores:
+            self.mapa_colores[pid] = self.colores[self.contador % len(self.colores)]
+            self.contador += 1
+        return self.mapa_colores[pid]
+    
+    def reset(self):
+        self.mapa_colores.clear()
+        self.contador = 0
+
 class GanttChart(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -114,11 +142,12 @@ class GanttChart(BoxLayout):
         self.size_hint_y = None
         self.height = dp(100)
         self.bind(size=self._update_rect)
+        self.color_assigner = ColorAssigner()
         
         self.title = Label(text='Diagrama de Gantt', size_hint_y=None, height=dp(30))
         self.add_widget(self.title)
         
-        self.chart_container = BoxLayout(size_hint_y=None, height=dp(70))
+        self.chart_container = BoxLayout(size_hint_y=None, height=dp(70), orientation='vertical')
         self.add_widget(self.chart_container)
         
         with self.canvas.before:
@@ -144,18 +173,39 @@ class GanttChart(BoxLayout):
             # Escala de tiempo
             escala = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(20))
             for i in range(0, tiempo_max + 1, max(1, tiempo_max // 10)):
-                label = Label(text=str(i), size_hint_x=None, width=dp(30))
+                label = Label(text=str(i), size_hint_x=None, width=dp(30), color=(0,0,0,1))
                 escala.add_widget(label)
             self.chart_container.add_widget(escala)
 
             # Una fila por núcleo
             for core_id in sorted(gantt_data.keys()):
-                fila = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(25))
-                fila.add_widget(Label(text=f"Core {core_id}", size_hint_x=None, width=dp(60)))
-                # Mostrar secuencia de PIDs por tiempo (compacta)
+                fila = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(40), spacing=dp(2))
+                fila.add_widget(Label(text=f"Core {core_id}", size_hint_x=None, width=dp(60), color=(0,0,0,1)))
+                
+                # Crear bloques de color para cada evento
+                bloques = BoxLayout(orientation='horizontal', size_hint_x=1, spacing=dp(1))
                 eventos = gantt_data[core_id]
-                texto = " ".join([f"P{pid}" if pid is not None else "_" for _, pid in eventos])
-                fila.add_widget(Label(text=texto))
+                
+                for t, pid in eventos:
+                    if pid is not None:
+                        color = self.color_assigner.obtener_color(pid)
+                        bloque = BoxLayout(size_hint_x=1)
+                        with bloque.canvas.before:
+                            Color(*color)
+                            bloque.bg_rect = Rectangle(size=bloque.size, pos=bloque.pos)
+                        bloque.bind(size=self._update_bloque_rect, pos=self._update_bloque_rect)
+                        label_bloque = Label(text=f'P{pid}', color=(1,1,1,1), bold=True)
+                        bloque.add_widget(label_bloque)
+                        bloques.add_widget(bloque)
+                    else:
+                        bloque = BoxLayout(size_hint_x=1)
+                        with bloque.canvas.before:
+                            Color(0.7, 0.7, 0.7, 1)
+                            bloque.bg_rect = Rectangle(size=bloque.size, pos=bloque.pos)
+                        bloque.bind(size=self._update_bloque_rect, pos=self._update_bloque_rect)
+                        bloques.add_widget(bloque)
+                
+                fila.add_widget(bloques)
                 self.chart_container.add_widget(fila)
         else:
             # Si viene como lista de triples (t, core, pid), agrupamos
@@ -170,18 +220,30 @@ class GanttChart(BoxLayout):
 
             escala = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(20))
             for i in range(0, tiempo_max + 1, max(1, tiempo_max // 10)):
-                label = Label(text=str(i), size_hint_x=None, width=dp(30))
+                label = Label(text=str(i), size_hint_x=None, width=dp(30), color=(0,0,0,1))
                 escala.add_widget(label)
             self.chart_container.add_widget(escala)
 
-            barras = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(50))
+            barras = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(50), spacing=dp(1))
             procesos_vistos = set()
             for tiempo, pid in gantt_data:
                 if pid not in procesos_vistos:
-                    barra = Label(text=f'P{pid}', size_hint_x=None, width=dp(40))
+                    color = self.color_assigner.obtener_color(pid)
+                    barra = BoxLayout()
+                    with barra.canvas.before:
+                        Color(*color)
+                        barra.bg_rect = Rectangle(size=barra.size, pos=barra.pos)
+                    barra.bind(size=self._update_bloque_rect, pos=self._update_bloque_rect)
+                    label_barra = Label(text=f'P{pid}', color=(1,1,1,1), bold=True)
+                    barra.add_widget(label_barra)
                     barras.add_widget(barra)
                     procesos_vistos.add(pid)
             self.chart_container.add_widget(barras)
+    
+    def _update_bloque_rect(self, instance, value):
+        if hasattr(instance, 'bg_rect'):
+            instance.bg_rect.size = instance.size
+            instance.bg_rect.pos = instance.pos
 
 class InfoIcon(Button):
     def __init__(self, message='', **kwargs):
@@ -536,6 +598,7 @@ class PlanificadorApp(App):
         self.planificador.procesos_terminados.clear()
         self.planificador.gantt.clear()
         
+        self.gantt_chart.color_assigner.reset()
         self.actualizar_interfaz()
     
     def limpiar_todo(self, instance):
@@ -544,6 +607,7 @@ class PlanificadorApp(App):
             self.evento_simulacion.cancel()
         
         self.planificador.reset()
+        self.gantt_chart.color_assigner.reset()
         self.actualizar_interfaz()
     
     def _with_info(self, widget, message):
@@ -836,9 +900,6 @@ class SystemDetailsPopup(Popup):
         grid_sys.add_widget(self.l_cpu_uso)
         grid_sys.add_widget(Label(text='Velocidad CPU:'))
         self.l_cpu_vel = Label(text='-')
-        grid_sys.add_widget(self.l_cpu_vel)
-        grid_sys.add_widget(Label(text='Procesos activos:'))
-        self.l_proc = Label(text='-')
         grid_sys.add_widget(self.l_proc)
         grid_sys.add_widget(Label(text='Subprocesos activos:'))
         self.l_threads = Label(text='-')
